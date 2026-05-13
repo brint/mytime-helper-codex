@@ -9,7 +9,7 @@ This repo helps Codex draft weekly MyTime entries using two inputs:
 
 The local code does not read Microsoft 365 or Slack APIs directly. Codex should use the platform connectors that are available in-session for those systems, then use this repo's MyTime tools to understand gaps and create draft entries.
 
-Inference rules are defined in [docs/inference-rules.md](/Users/brintohearn/src/mytime-helper-codex/docs/inference-rules.md). Follow them by default unless the user overrides them.
+Inference rules are defined in [docs/inference-rules.md](docs/inference-rules.md). Follow them by default unless the user overrides them.
 
 ## Default workflow
 
