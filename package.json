@@ -1,0 +1,36 @@
+{
+  "name": "mytime-helper-codex",
+  "version": "1.0.0",
+  "description": "CLI and MCP workflow for drafting MyTime entries with Codex-assisted weekly evidence gathering",
+  "main": "dist/src/index.js",
+  "type": "module",
+  "bin": {
+    "mytime": "./dist/src/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/",
+    "dev": "npx tsx src/index.ts",
+    "start": "node dist/src/index.js",
+    "mcp": "npx tsx src/mcp-server.ts",
+    "draft-context": "npx tsx src/index.ts weekly-draft-context"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^25.6.2",
+    "eslint": "^10.3.0",
+    "playwright": "^1.59.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.59.2"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3"
+  }
+}

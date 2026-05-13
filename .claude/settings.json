@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+        "mytime": {
+            "command": "npx",
+            "args": [
+                "tsx",
+                "/Users/brintohearn/src/mytime-helper-codex/src/mcp-server.ts"
+            ]
+        }
+    }
+}
