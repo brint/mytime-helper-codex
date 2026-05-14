@@ -11,6 +11,11 @@ The local code does not read Microsoft 365 or Slack APIs directly. Codex should 
 
 Inference rules are defined in [docs/inference-rules.md](docs/inference-rules.md). Follow them by default unless the user overrides them.
 
+## Local skills
+
+- For security reviews, hardening requests, code simplification, or combined "review and clean up" work, use the repo-local skill at `skills/security-review-and-simplify/SKILL.md`.
+- Before committing code for that workflow, validate with `npm run build` and `npm run lint`. If the CLI or MCP entrypoints changed, also run a quick smoke check such as `node dist/src/index.js --help`.
+
 ## Default workflow
 
 1. Run `mytime_get_week_draft_context` first.

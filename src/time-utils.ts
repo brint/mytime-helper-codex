@@ -2,6 +2,8 @@ function toMMDDYYYY(d: Date): string {
   return `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
 }
 
+const MMDDYYYY_RE = /^(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/\d{4}$/;
+
 function getMonday(date: Date = new Date()): Date {
   const d = new Date(date);
   const day = d.getDay();
@@ -23,6 +25,17 @@ export function getWeekdays(date: Date = new Date()): string[] {
 // Returns the Monday of the current week as MM/DD/YYYY
 export function getWeekMonday(date: Date = new Date()): string {
   return toMMDDYYYY(getMonday(date));
+}
+
+export function isValidMMDDYYYY(value: string): boolean {
+  if (!MMDDYYYY_RE.test(value)) return false;
+
+  const [month, day, year] = value.split('/').map(Number);
+  const parsed = new Date(year, month - 1, day);
+
+  return parsed.getFullYear() === year
+    && parsed.getMonth() === month - 1
+    && parsed.getDate() === day;
 }
 
 // Parse MM/DD/YYYY → comparable date string YYYY-MM-DD

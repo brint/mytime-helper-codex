@@ -6,13 +6,17 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { getToken } from './auth.js';
 import { getTimeEntries, getTimeApprovals, postTimeEntry, NON_PROJECT_TIME } from './mytime-client.js';
-import { getWeekdays, getWeekMonday, toISO, normalizeApiDate } from './time-utils.js';
+import { getWeekdays, getWeekMonday, isValidMMDDYYYY, toISO, normalizeApiDate } from './time-utils.js';
 import { buildWeekDraftContext } from './week-draft-context.js';
 
 const server = new Server(
   { name: 'mytime', version: '1.0.0' },
   { capabilities: { tools: {} } },
 );
+
+function errorResult(message: string) {
+  return { content: [{ type: 'text', text: `Error: ${message}` }], isError: true as const };
+}
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
@@ -147,8 +151,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const week = (args.week as string | undefined) ?? monday;
     const targetHoursPerDay = (args.targetHoursPerDay as number | undefined) ?? 8;
 
-    if (typeof targetHoursPerDay !== 'number' || targetHoursPerDay <= 0) {
-      return { content: [{ type: 'text', text: 'Error: targetHoursPerDay must be a positive number' }], isError: true };
+    if (!isValidMMDDYYYY(week)) {
+      return errorResult('week must be a valid date in MM/DD/YYYY format');
+    }
+
+    if (typeof targetHoursPerDay !== 'number' || !Number.isFinite(targetHoursPerDay) || targetHoursPerDay <= 0 || targetHoursPerDay > 24) {
+      return errorResult('targetHoursPerDay must be a positive number up to 24');
     }
 
     const entries = await getTimeEntries(token, week);
@@ -160,6 +168,9 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   if (name === 'mytime_get_approvals') {
     const week = (args.week as string | undefined) ?? monday;
+    if (!isValidMMDDYYYY(week)) {
+      return errorResult('week must be a valid date in MM/DD/YYYY format');
+    }
     const records = await getTimeApprovals(token, week);
 
     type PendingDay = { date: string; hours: number };
@@ -198,8 +209,12 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const hours       = args.hours as number;
     const description = (args.description as string | undefined) ?? '';
 
-    if (!date || typeof hours !== 'number' || hours <= 0) {
-      return { content: [{ type: 'text', text: 'Error: date and hours are required' }], isError: true };
+    if (!date || !isValidMMDDYYYY(date)) {
+      return errorResult('date must be a valid date in MM/DD/YYYY format');
+    }
+
+    if (typeof hours !== 'number' || !Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      return errorResult('hours must be a positive number up to 24');
     }
 
     const id = await postTimeEntry(token, { date, hours, description });

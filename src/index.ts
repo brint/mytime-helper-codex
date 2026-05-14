@@ -18,10 +18,43 @@ import {
   matchesProjectFilter,
 } from './config.js';
 import { apiGet, deleteTimeEntry, getTimeEntries, getTimeApprovals, postTimeEntry, postTimeApproval, NON_PROJECT_TIME, type ApprovalAction } from './mytime-client.js';
-import { getWeekdays, getWeekMonday, toISO, normalizeApiDate } from './time-utils.js';
+import { getWeekdays, getWeekMonday, isValidMMDDYYYY, toISO, normalizeApiDate } from './time-utils.js';
 import { buildWeekDraftContext } from './week-draft-context.js';
 
 const program = new Command();
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function fail(message: string, err?: unknown): never {
+  const detail = err ? ` ${getErrorMessage(err)}` : '';
+  console.error(chalk.red(`${message}${detail}`));
+  process.exit(1);
+}
+
+async function getTokenOrExit(): Promise<string> {
+  try {
+    return await getToken();
+  } catch (err: unknown) {
+    fail('Auth failed:', err);
+  }
+}
+
+function parseHoursOrExit(value: string, flagName: string): number {
+  const hours = parseFloat(value);
+  if (isNaN(hours) || hours <= 0 || hours > 24) {
+    fail(`${flagName} must be a positive number up to 24`);
+  }
+  return hours;
+}
+
+function validateDateOrExit(value: string, flagName: string): string {
+  if (!isValidMMDDYYYY(value)) {
+    fail(`${flagName} must be a valid date in MM/DD/YYYY format`);
+  }
+  return value;
+}
 
 program
   .name('mytime')
@@ -35,9 +68,8 @@ program
     try {
       await getToken();
       console.log(chalk.green('✓ Authenticated.'));
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Auth failed:', err);
     }
   });
 
@@ -45,13 +77,7 @@ program
   .command('status')
   .description("Show this week's time entries")
   .action(async () => {
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const token = await getTokenOrExit();
 
     const weekdays = getWeekdays();
     const monday = getWeekMonday();
@@ -59,9 +85,8 @@ program
     let entries: Awaited<ReturnType<typeof getTimeEntries>>;
     try {
       entries = await getTimeEntries(token, monday);
-    } catch (err: any) {
-      console.error(chalk.red('Failed to fetch time entries:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed to fetch time entries:', err);
     }
 
     const weekISO = new Set(weekdays.map(toISO));
@@ -98,19 +123,8 @@ program
   .option('-d, --description <text>', 'Entry description', '')
   .option('--dry-run', 'Preview what would be drafted without creating entries')
   .action(async (opts) => {
-    const hoursPerDay = parseFloat(opts.hours);
-    if (isNaN(hoursPerDay) || hoursPerDay <= 0 || hoursPerDay > 24) {
-      console.error(chalk.red('--hours must be a positive number up to 24'));
-      process.exit(1);
-    }
-
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const hoursPerDay = parseHoursOrExit(opts.hours, '--hours');
+    const token = await getTokenOrExit();
 
     const weekdays = getWeekdays();
     const monday = getWeekMonday();
@@ -118,9 +132,8 @@ program
     let existing: Awaited<ReturnType<typeof getTimeEntries>>;
     try {
       existing = await getTimeEntries(token, monday);
-    } catch (err: any) {
-      console.error(chalk.red('Failed to fetch time entries:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed to fetch time entries:', err);
     }
 
     const filledDates = new Set(
@@ -149,9 +162,9 @@ program
       try {
         const id = await postTimeEntry(token, { date, hours: hoursPerDay, description: opts.description });
         console.log(chalk.green('✓'), label, chalk.dim(id));
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.error(chalk.red('✗'), label);
-        console.error(chalk.red('  Error:'), err.message);
+        console.error(chalk.red('  Error:'), getErrorMessage(err));
       }
     }
 
@@ -168,28 +181,15 @@ program
   .option('-w, --week <MM/DD/YYYY>', 'Week start date (Monday); defaults to current week')
   .option('-t, --target-hours <n>', 'Target hours per day', '8')
   .action(async (opts) => {
-    const targetHours = parseFloat(opts.targetHours);
-    if (isNaN(targetHours) || targetHours <= 0 || targetHours > 24) {
-      console.error(chalk.red('--target-hours must be a positive number up to 24'));
-      process.exit(1);
-    }
-
-    const weekMonday = opts.week ?? getWeekMonday();
-
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const targetHours = parseHoursOrExit(opts.targetHours, '--target-hours');
+    const weekMonday = opts.week ? validateDateOrExit(opts.week, '--week') : getWeekMonday();
+    const token = await getTokenOrExit();
 
     let entries: Awaited<ReturnType<typeof getTimeEntries>>;
     try {
       entries = await getTimeEntries(token, weekMonday);
-    } catch (err: any) {
-      console.error(chalk.red('Failed to fetch time entries:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed to fetch time entries:', err);
     }
 
     const context = buildWeekDraftContext(entries, { weekMonday, targetHoursPerDay: targetHours });
@@ -201,22 +201,14 @@ program
   .description('Print raw MyTime entries for a week, including project and task identifiers')
   .option('-w, --week <MM/DD/YYYY>', 'Week start date (Monday); defaults to current week')
   .action(async (opts) => {
-    const weekMonday = opts.week ?? getWeekMonday();
-
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const weekMonday = opts.week ? validateDateOrExit(opts.week, '--week') : getWeekMonday();
+    const token = await getTokenOrExit();
 
     try {
       const entries = await getTimeEntries(token, weekMonday);
       console.log(JSON.stringify(entries, null, 2));
-    } catch (err: any) {
-      console.error(chalk.red('Failed to fetch time entries:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed to fetch time entries:', err);
     }
   });
 
@@ -236,23 +228,13 @@ program
   .option('--work-location-group-id <id>', 'Work location group ID')
   .option('--work-location-id <id>', 'Work location ID')
   .action(async (opts) => {
-    const hours = parseFloat(opts.hours);
-    if (isNaN(hours) || hours <= 0 || hours > 24) {
-      console.error(chalk.red('--hours must be a positive number up to 24'));
-      process.exit(1);
-    }
-
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const hours = parseHoursOrExit(opts.hours, '--hours');
+    const date = validateDateOrExit(opts.date, '--date');
+    const token = await getTokenOrExit();
 
     try {
       const id = await postTimeEntry(token, {
-        date: opts.date,
+        date,
         hours,
         description: opts.description,
         projectId: opts.projectId,
@@ -266,9 +248,8 @@ program
         workLocationId: opts.workLocationId,
       });
       console.log(JSON.stringify({ success: true, id }, null, 2));
-    } catch (err: any) {
-      console.error(chalk.red('Failed to draft entry:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed to draft entry:', err);
     }
   });
 
@@ -278,25 +259,19 @@ program
   .requiredOption('--id <id>', 'Time entry ID')
   .option('-w, --week <MM/DD/YYYY>', 'Week start date to resolve the full entry payload before deleting')
   .action(async (opts) => {
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const token = await getTokenOrExit();
+    const week = opts.week ? validateDateOrExit(opts.week, '--week') : undefined;
 
     try {
       let record: unknown;
-      if (opts.week) {
-        const entries = await getTimeEntries(token, opts.week);
+      if (week) {
+        const entries = await getTimeEntries(token, week);
         record = entries.find(entry => entry.Id === opts.id);
       }
       await deleteTimeEntry(token, opts.id, record);
       console.log(JSON.stringify({ success: true, id: opts.id }, null, 2));
-    } catch (err: any) {
-      console.error(chalk.red('Failed to delete entry:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed to delete entry:', err);
     }
   });
 
@@ -305,20 +280,13 @@ program
   .description('Read a raw MyTime API path for diagnostics')
   .requiredOption('--path <path>', 'API path beginning with /')
   .action(async (opts) => {
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const token = await getTokenOrExit();
 
     try {
       const result = await apiGet<unknown>(token, opts.path);
       console.log(JSON.stringify(result, null, 2));
-    } catch (err: any) {
-      console.error(chalk.red('Failed API GET:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed API GET:', err);
     }
   });
 
@@ -328,22 +296,14 @@ program
   .option('-w, --week <MM/DD/YYYY>', 'Week start date (Monday); defaults to current week')
   .option('--approve', 'Approve all pending entries after confirming')
   .action(async (opts) => {
-    const monday = opts.week ?? getWeekMonday();
-
-    let token: string;
-    try {
-      token = await getToken();
-    } catch (err: any) {
-      console.error(chalk.red('Auth failed:'), err.message);
-      process.exit(1);
-    }
+    const monday = opts.week ? validateDateOrExit(opts.week, '--week') : getWeekMonday();
+    const token = await getTokenOrExit();
 
     let records: Awaited<ReturnType<typeof getTimeApprovals>>;
     try {
       records = await getTimeApprovals(token, monday);
-    } catch (err: any) {
-      console.error(chalk.red('Failed to fetch approvals:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Failed to fetch approvals:', err);
     }
 
     const projectFilters = getApprovalProjectFilters();
@@ -454,9 +414,8 @@ program
     try {
       await postTimeApproval(token, allActions);
       console.log(chalk.green(`✓ Approved ${allActions.length} entr${allActions.length === 1 ? 'y' : 'ies'}.`));
-    } catch (err: any) {
-      console.error(chalk.red('Approval failed:'), err.message);
-      process.exit(1);
+    } catch (err: unknown) {
+      fail('Approval failed:', err);
     }
   });
 
